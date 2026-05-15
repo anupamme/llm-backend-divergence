@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+
+# Virtual environments
+.venv/
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Model caches (runtime cache at ~/.cache/llm-backend-divergence/)
+.cache/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Results output
+results/
+
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
