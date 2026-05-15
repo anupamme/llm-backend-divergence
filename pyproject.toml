@@ -24,6 +24,7 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
     "mlx-lm>=0.19",
+    "psutil>=5.9",
 ]
 
 [tool.pytest.ini_options]

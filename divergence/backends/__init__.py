@@ -2,6 +2,7 @@
 
 from divergence.backends.base import Backend
 from divergence.backends.mlx_fp16 import MlxFp16Backend
+from divergence.backends.mlx_q4 import MlxQ4Backend
 from divergence.backends.mock import MockBackend
 from divergence.backends.schema import (
     BackendMetadata,
@@ -16,6 +17,7 @@ __all__ = [
     "Hardware",
     "InferenceResult",
     "MlxFp16Backend",
+    "MlxQ4Backend",
     "MockBackend",
     "ScoringResult",
 ]
