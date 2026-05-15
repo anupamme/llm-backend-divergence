@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,9 +20,7 @@ class TestMockBackendGenerate:
     def test_returns_inference_result(self) -> None:
         backend = MockBackend()
         backend.load("test-model")
-        result = backend.generate(
-            "Hello world", max_tokens=5, temperature=0.7, seed=42
-        )
+        result = backend.generate("Hello world", max_tokens=5, temperature=0.7, seed=42)
         assert isinstance(result, InferenceResult)
         assert result.backend_name == "mock"
         assert result.model_id == "test-model"
@@ -107,13 +105,11 @@ class TestSchemaValidation:
                 model_id="m",
                 seed=0,
                 temperature=0.0,
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
             )
 
     def test_inference_result_rejects_mismatched_latency_length(self) -> None:
-        with pytest.raises(
-            ValueError, match="per_token_latency_ms length"
-        ):
+        with pytest.raises(ValueError, match="per_token_latency_ms length"):
             InferenceResult(
                 prompt="hello",
                 completion="world",
@@ -126,7 +122,7 @@ class TestSchemaValidation:
                 model_id="m",
                 seed=0,
                 temperature=0.0,
-                timestamp=datetime.now(tz=timezone.utc),
+                timestamp=datetime.now(tz=UTC),
             )
 
     def test_inference_result_allows_empty_tokens_empty_completion(
@@ -144,7 +140,7 @@ class TestSchemaValidation:
             model_id="m",
             seed=0,
             temperature=0.0,
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
         )
         assert result.completion == ""
         assert result.token_ids == []
@@ -176,9 +172,7 @@ class TestSchemaValidation:
     def test_inference_result_serialization_roundtrip(self) -> None:
         backend = MockBackend()
         backend.load("m")
-        result = backend.generate(
-            "test", max_tokens=3, temperature=0.5, seed=7
-        )
+        result = backend.generate("test", max_tokens=3, temperature=0.5, seed=7)
         json_str = result.model_dump_json()
         restored = InferenceResult.model_validate_json(json_str)
         assert restored == result

@@ -133,15 +133,11 @@ class TestRunEval:
             assert runs[0][0] == "test-run-001"
 
             # Check inference_results table
-            inference = conn.execute(
-                "SELECT * FROM inference_results"
-            ).fetchall()
+            inference = conn.execute("SELECT * FROM inference_results").fetchall()
             assert len(inference) == 5
 
             # Check scoring_results table (MockBackend supports score)
-            scoring = conn.execute(
-                "SELECT * FROM scoring_results"
-            ).fetchall()
+            scoring = conn.execute("SELECT * FROM scoring_results").fetchall()
             assert len(scoring) == 5
 
             conn.close()

@@ -54,9 +54,7 @@ def _create_test_db(db_path: str) -> None:
         ("run-b", "backend-b", "model-1", "canary", "2024-01-01", "{}"),
         ("run-c", "backend-c", "model-1", "canary", "2024-01-01", "{}"),
     ]
-    conn.executemany(
-        "INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)", runs
-    )
+    conn.executemany("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?)", runs)
 
     tok_same = json.dumps([1, 2, 3])
     tok_diff = json.dumps([4, 5, 6])

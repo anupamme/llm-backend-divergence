@@ -77,22 +77,14 @@ class TestMlxFp16BackendIntegration:
         assert result.finish_reason in ("stop", "length")
 
     def test_determinism_with_seed(self, backend: MlxFp16Backend) -> None:
-        r1 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
-        r2 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
+        r1 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
+        r2 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
         assert r1.token_ids == r2.token_ids
         assert r1.completion == r2.completion
 
     def test_different_seeds_differ(self, backend: MlxFp16Backend) -> None:
-        r1 = backend.generate(
-            "Tell me a story", max_tokens=16, temperature=0.8, seed=1
-        )
-        r2 = backend.generate(
-            "Tell me a story", max_tokens=16, temperature=0.8, seed=2
-        )
+        r1 = backend.generate("Tell me a story", max_tokens=16, temperature=0.8, seed=1)
+        r2 = backend.generate("Tell me a story", max_tokens=16, temperature=0.8, seed=2)
         assert r1.token_ids != r2.token_ids
 
     def test_score_returns_logprobs(self, backend: MlxFp16Backend) -> None:

@@ -89,9 +89,7 @@ class TestLlamaCppQ4KMIntegration:
         yield b  # type: ignore[misc]
         b.unload()
 
-    def test_generate_produces_output(
-        self, backend: LlamaCppQ4KMBackend
-    ) -> None:
+    def test_generate_produces_output(self, backend: LlamaCppQ4KMBackend) -> None:
         result = backend.generate(
             "The capital of France is",
             max_tokens=32,
@@ -106,21 +104,13 @@ class TestLlamaCppQ4KMIntegration:
         assert result.backend_name == "llamacpp-q4km"
         assert result.finish_reason in ("stop", "length")
 
-    def test_determinism_with_seed(
-        self, backend: LlamaCppQ4KMBackend
-    ) -> None:
-        r1 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
-        r2 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
+    def test_determinism_with_seed(self, backend: LlamaCppQ4KMBackend) -> None:
+        r1 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
+        r2 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
         assert r1.token_ids == r2.token_ids
         assert r1.completion == r2.completion
 
-    def test_score_returns_logprobs(
-        self, backend: LlamaCppQ4KMBackend
-    ) -> None:
+    def test_score_returns_logprobs(self, backend: LlamaCppQ4KMBackend) -> None:
         result = backend.score("The capital of France is", " Paris")
         assert isinstance(result, ScoringResult)
         assert len(result.logprobs) == len(result.token_ids)
@@ -128,9 +118,7 @@ class TestLlamaCppQ4KMIntegration:
         assert all(lp <= 0.0 for lp in result.logprobs)
         assert result.backend_name == "llamacpp-q4km"
 
-    def test_peak_memory_under_6gb(
-        self, backend: LlamaCppQ4KMBackend
-    ) -> None:
+    def test_peak_memory_under_6gb(self, backend: LlamaCppQ4KMBackend) -> None:
         import psutil
 
         process = psutil.Process(os.getpid())
@@ -155,9 +143,7 @@ class TestLlamaCppQ8Integration:
         yield b  # type: ignore[misc]
         b.unload()
 
-    def test_generate_produces_output(
-        self, backend: LlamaCppQ8Backend
-    ) -> None:
+    def test_generate_produces_output(self, backend: LlamaCppQ8Backend) -> None:
         result = backend.generate(
             "The capital of France is",
             max_tokens=32,
@@ -173,18 +159,12 @@ class TestLlamaCppQ8Integration:
         assert result.finish_reason in ("stop", "length")
 
     def test_determinism_with_seed(self, backend: LlamaCppQ8Backend) -> None:
-        r1 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
-        r2 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
+        r1 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
+        r2 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
         assert r1.token_ids == r2.token_ids
         assert r1.completion == r2.completion
 
-    def test_score_returns_logprobs(
-        self, backend: LlamaCppQ8Backend
-    ) -> None:
+    def test_score_returns_logprobs(self, backend: LlamaCppQ8Backend) -> None:
         result = backend.score("The capital of France is", " Paris")
         assert isinstance(result, ScoringResult)
         assert len(result.logprobs) == len(result.token_ids)
@@ -192,9 +172,7 @@ class TestLlamaCppQ8Integration:
         assert all(lp <= 0.0 for lp in result.logprobs)
         assert result.backend_name == "llamacpp-q8"
 
-    def test_peak_memory_under_10gb(
-        self, backend: LlamaCppQ8Backend
-    ) -> None:
+    def test_peak_memory_under_10gb(self, backend: LlamaCppQ8Backend) -> None:
         import psutil
 
         process = psutil.Process(os.getpid())
@@ -205,6 +183,4 @@ class TestLlamaCppQ8Integration:
             seed=1,
         )
         rss_gb = process.memory_info().rss / (1024**3)
-        assert (
-            rss_gb < 10.0
-        ), f"Peak RSS was {rss_gb:.2f} GB, expected < 10 GB"
+        assert rss_gb < 10.0, f"Peak RSS was {rss_gb:.2f} GB, expected < 10 GB"

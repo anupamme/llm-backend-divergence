@@ -38,11 +38,16 @@ class TestRunCommand:
                 app,
                 [
                     "run",
-                    "--backends", "mock,mock",
-                    "--datasets", "canary",
-                    "--output", db_path,
-                    "--max-tokens", "8",
-                    "--model-id", "test-model",
+                    "--backends",
+                    "mock,mock",
+                    "--datasets",
+                    "canary",
+                    "--output",
+                    db_path,
+                    "--max-tokens",
+                    "8",
+                    "--model-id",
+                    "test-model",
                 ],
             )
             assert result.exit_code == 0, result.output
@@ -55,9 +60,7 @@ class TestRunCommand:
             assert inference_count == 200
 
             # Check runs table has 2 entries (mock × canary, twice)
-            run_count = conn.execute(
-                "SELECT COUNT(*) FROM runs"
-            ).fetchone()[0]
+            run_count = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
             assert run_count == 2
 
             # Scoring results also present (MockBackend supports score)
@@ -75,9 +78,12 @@ class TestRunCommand:
                 app,
                 [
                     "run",
-                    "--backends", "nonexistent",
-                    "--datasets", "canary",
-                    "--output", db_path,
+                    "--backends",
+                    "nonexistent",
+                    "--datasets",
+                    "canary",
+                    "--output",
+                    db_path,
                 ],
             )
             assert result.exit_code == 1
@@ -89,9 +95,12 @@ class TestRunCommand:
                 app,
                 [
                     "run",
-                    "--backends", "mock",
-                    "--datasets", "nonexistent",
-                    "--output", db_path,
+                    "--backends",
+                    "mock",
+                    "--datasets",
+                    "nonexistent",
+                    "--output",
+                    db_path,
                 ],
             )
             assert result.exit_code == 1
@@ -106,11 +115,16 @@ class TestSummarizeCommand:
                 app,
                 [
                     "run",
-                    "--backends", "mock",
-                    "--datasets", "canary",
-                    "--output", db_path,
-                    "--max-tokens", "8",
-                    "--model-id", "test-model",
+                    "--backends",
+                    "mock",
+                    "--datasets",
+                    "canary",
+                    "--output",
+                    db_path,
+                    "--max-tokens",
+                    "8",
+                    "--model-id",
+                    "test-model",
                 ],
             )
             # Then summarize

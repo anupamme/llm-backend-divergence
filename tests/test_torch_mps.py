@@ -62,9 +62,7 @@ class TestTorchMpsBackendIntegration:
         yield b  # type: ignore[misc]
         b.unload()
 
-    def test_generate_produces_output(
-        self, backend: TorchMpsBackend
-    ) -> None:
+    def test_generate_produces_output(self, backend: TorchMpsBackend) -> None:
         result = backend.generate(
             "The capital of France is",
             max_tokens=32,
@@ -89,21 +87,13 @@ class TestTorchMpsBackendIntegration:
         ),
         strict=False,
     )
-    def test_determinism_with_seed(
-        self, backend: TorchMpsBackend
-    ) -> None:
-        r1 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
-        r2 = backend.generate(
-            "Hello", max_tokens=16, temperature=0.0, seed=123
-        )
+    def test_determinism_with_seed(self, backend: TorchMpsBackend) -> None:
+        r1 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
+        r2 = backend.generate("Hello", max_tokens=16, temperature=0.0, seed=123)
         assert r1.token_ids == r2.token_ids
         assert r1.completion == r2.completion
 
-    def test_score_returns_logprobs(
-        self, backend: TorchMpsBackend
-    ) -> None:
+    def test_score_returns_logprobs(self, backend: TorchMpsBackend) -> None:
         result = backend.score("The capital of France is", " Paris")
         assert isinstance(result, ScoringResult)
         assert len(result.logprobs) == len(result.token_ids)
@@ -112,9 +102,7 @@ class TestTorchMpsBackendIntegration:
         assert result.backend_name == "torch-mps"
         assert result.model_id == self.MODEL_ID
 
-    def test_peak_memory_under_16gb(
-        self, backend: TorchMpsBackend
-    ) -> None:
+    def test_peak_memory_under_16gb(self, backend: TorchMpsBackend) -> None:
         import psutil
 
         process = psutil.Process(os.getpid())
@@ -125,6 +113,4 @@ class TestTorchMpsBackendIntegration:
             seed=1,
         )
         rss_gb = process.memory_info().rss / (1024**3)
-        assert (
-            rss_gb < 16.0
-        ), f"Peak RSS was {rss_gb:.2f} GB, expected < 16 GB"
+        assert rss_gb < 16.0, f"Peak RSS was {rss_gb:.2f} GB, expected < 16 GB"
