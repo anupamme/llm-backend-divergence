@@ -5,7 +5,7 @@ description = "LLM backend divergence evaluation framework"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["pydantic>=2.7"]
 
 [build-system]
 requires = ["hatchling"]
@@ -37,3 +37,9 @@ select = ["E", "F", "I", "N", "W", "UP"]
 python_version = "3.11"
 strict = true
 packages = ["divergence"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
