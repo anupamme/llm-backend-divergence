@@ -5,7 +5,7 @@ description = "LLM backend divergence evaluation framework"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.7", "datasets>=2.0"]
+dependencies = ["pydantic>=2.7", "datasets>=2.0", "tqdm>=4.60"]
 
 [project.optional-dependencies]
 mlx = ["mlx-lm>=0.19"]
@@ -52,7 +52,7 @@ packages = ["divergence"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["datasets"]
+module = ["datasets", "tqdm"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
