@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 dependencies = ["pydantic>=2.7", "datasets>=2.0", "tqdm>=4.60", "typer>=0.9", "rich>=13.0", "sacrebleu>=2.3"]
 
 [project.optional-dependencies]
+dashboard = ["streamlit>=1.30", "plotly>=5.18"]
 mlx = ["mlx-lm>=0.19"]
 llamacpp = ["llama-cpp-python>=0.3"]
 torch = ["torch>=2.0", "transformers>=4.40"]
@@ -34,6 +35,8 @@ dev = [
     "torch>=2.0",
     "transformers>=4.40",
     "datasets>=2.0",
+    "streamlit>=1.30",
+    "plotly>=5.18",
 ]
 
 [tool.pytest.ini_options]
@@ -55,7 +58,7 @@ packages = ["divergence"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["datasets", "tqdm", "typer", "rich", "rich.table", "rich.console", "sacrebleu"]
+module = ["datasets", "tqdm", "typer", "rich", "rich.table", "rich.console", "sacrebleu", "streamlit", "plotly", "plotly.express", "plotly.graph_objects"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
