@@ -12,6 +12,7 @@ from divergence.backends.schema import (
     InferenceResult,
     ScoringResult,
 )
+from divergence.backends.torch_mps import TorchMpsBackend
 
 __all__ = [
     "Backend",
@@ -24,4 +25,5 @@ __all__ = [
     "MlxQ4Backend",
     "MockBackend",
     "ScoringResult",
+    "TorchMpsBackend",
 ]

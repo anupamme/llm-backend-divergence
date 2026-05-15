@@ -1,10 +1,13 @@
-.PHONY: setup setup-llamacpp test test-slow lint format clean
+.PHONY: setup setup-llamacpp setup-torch test test-slow lint format clean
 
 setup:
 	uv sync
 
 setup-llamacpp:
 	CMAKE_ARGS="-DGGML_METAL=on -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++" uv pip install --python .venv/bin/python "llama-cpp-python>=0.3"
+
+setup-torch:
+	uv pip install --python .venv/bin/python "torch>=2.0" "transformers>=4.40"
 
 test:
 	uv run pytest -m "not slow"

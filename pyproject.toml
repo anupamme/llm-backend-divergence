@@ -10,6 +10,7 @@ dependencies = ["pydantic>=2.7"]
 [project.optional-dependencies]
 mlx = ["mlx-lm>=0.19"]
 llamacpp = ["llama-cpp-python>=0.3"]
+torch = ["torch>=2.0", "transformers>=4.40"]
 
 [build-system]
 requires = ["hatchling"]
@@ -27,6 +28,8 @@ dev = [
     "mlx-lm>=0.19",
     "psutil>=5.9",
     "llama-cpp-python>=0.3",
+    "torch>=2.0",
+    "transformers>=4.40",
 ]
 
 [tool.pytest.ini_options]
