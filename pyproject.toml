@@ -5,7 +5,7 @@ description = "LLM backend divergence evaluation framework"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.7"]
+dependencies = ["pydantic>=2.7", "datasets>=2.0"]
 
 [project.optional-dependencies]
 mlx = ["mlx-lm>=0.19"]
@@ -30,6 +30,7 @@ dev = [
     "llama-cpp-python>=0.3",
     "torch>=2.0",
     "transformers>=4.40",
+    "datasets>=2.0",
 ]
 
 [tool.pytest.ini_options]
@@ -49,6 +50,10 @@ python_version = "3.11"
 strict = true
 packages = ["divergence"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["datasets"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
