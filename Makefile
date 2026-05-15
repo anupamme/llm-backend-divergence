@@ -1,10 +1,13 @@
-.PHONY: setup test lint format clean
+.PHONY: setup test test-slow lint format clean
 
 setup:
 	uv sync
 
 test:
-	uv run pytest
+	uv run pytest -m "not slow"
+
+test-slow:
+	uv run pytest -m slow
 
 lint:
 	uv run ruff check divergence/

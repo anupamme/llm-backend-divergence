@@ -7,6 +7,9 @@ license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.7"]
 
+[project.optional-dependencies]
+mlx = ["mlx-lm>=0.19"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -20,11 +23,13 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=3.7",
+    "mlx-lm>=0.19",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+markers = ["slow: marks tests requiring model download (deselect with '-m \"not slow\"')"]
 
 [tool.ruff]
 target-version = "py311"
