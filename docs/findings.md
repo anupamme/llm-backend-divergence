@@ -1,6 +1,6 @@
 # First Run Findings
 
-Results from the initial full evaluation run comparing five inference backends on Apple Silicon.
+Results from the initial full evaluation run comparing four inference backends on Apple Silicon.
 
 ## Setup
 
@@ -17,11 +17,12 @@ Results from the initial full evaluation run comparing five inference backends o
 - `mlx-q4` — MLX framework, 4-bit quantized
 - `llamacpp-q8` — llama.cpp, Q8_0 quantization (Metal)
 - `llamacpp-q4km` — llama.cpp, Q4_K_M quantization (Metal)
-- `torch-mps` — PyTorch + HuggingFace, FP16 on MPS
+
+Note: `torch-mps` (PyTorch FP16 on MPS) could not complete the run due to a 14.19 GiB buffer allocation failure on the 24 GB system. This is itself a finding — MPS FP16 inference for 7B models requires more contiguous memory than a 24 GB Apple Silicon machine can reliably provide under normal system load.
 
 **Datasets:**
 - GSM8K: 200 grade-school math problems
-- MMLU: 500 items across 5 subjects (math, medicine, formal logic, computer science, moral scenarios)
+- MMLU: 500 items across 5 subjects (high school math, medicine, formal logic, computer science, moral scenarios)
 - Canary: 100 hand-crafted precision probes (arithmetic, tokenization, logic, long context, formatting)
 
 ## Headline Numbers
@@ -30,67 +31,69 @@ Results from the initial full evaluation run comparing five inference backends o
 
 | Dataset | Unanimous | Majority | Split | Dispersed |
 |---------|-----------|----------|-------|-----------|
-| GSM8K | 78.5% | 14.0% | 5.5% | 2.0% |
-| MMLU | 91.2% | 6.4% | 1.8% | 0.6% |
-| Canary | 72.0% | 15.0% | 9.0% | 4.0% |
+| GSM8K | 42.5% | 26.0% | 0.0% | 31.5% |
+| MMLU | 60.2% | 10.0% | 0.0% | 29.8% |
+| Canary | 4.0% | 4.0% | 0.0% | 92.0% |
 
-The canary dataset — designed to probe precision-sensitive operations — shows the highest divergence rate. MMLU, which tests factual recall with constrained answer formats (A/B/C/D), shows the highest agreement.
+The canary dataset — designed to probe precision-sensitive operations — shows extreme divergence (92% dispersed). This is driven by long-form generation where backends produce semantically similar but textually different responses. MMLU shows the highest agreement at 60.2% unanimous, reflecting constrained factual recall tasks. The absence of "split" verdicts (0% across all datasets) indicates that with 4 backends, disagreements tend to be either minor (majority) or total (dispersed) rather than evenly divided.
 
 ### Latency by Backend
 
 | Backend | TTFT p50 (ms) | TTFT p95 (ms) | Total p50 (ms) | Total p95 (ms) |
 |---------|---------------|---------------|----------------|----------------|
-| mlx-fp16 | 42 | 68 | 1,850 | 2,340 |
-| mlx-q4 | 28 | 45 | 980 | 1,280 |
-| llamacpp-q8 | 55 | 92 | 2,100 | 2,680 |
-| llamacpp-q4km | 38 | 61 | 1,420 | 1,810 |
-| torch-mps | 85 | 145 | 2,450 | 3,200 |
+| mlx-fp16 | 816 | 1,316 | 36,243 | 37,039 |
+| mlx-q4 | 792 | 1,272 | 36,196 | 36,969 |
+| llamacpp-q8 | 475 | 1,120 | 32,726 | 35,251 |
+| llamacpp-q4km | 495 | 1,234 | 24,791 | 27,522 |
 
-MLX Q4 is fastest across the board. PyTorch MPS has the highest latency due to HuggingFace generate() overhead and MPS dispatch costs.
+llama.cpp Q4_K_M is fastest for total latency (24.8s p50 vs 36.2s for MLX FP16) — a 31% speedup from aggressive quantization. llama.cpp also has lower TTFT than MLX, suggesting faster prompt processing (prefill) in the Metal-accelerated llama.cpp stack. MLX FP16 and Q4 are nearly identical in latency, indicating that MLX's quantization overhead is minimal but doesn't translate to meaningful speedup for generation-bound workloads at max_tokens=256.
 
 ## Divergence Examples
 
-### Example 1: Arithmetic Precision (Canary)
+### Example 1: Hallucinated Web Content (Canary)
 
-**Prompt:** `What is 0.1 + 0.2? Give only the number.`
+**Prompt:** `What is 2^32?`
 
-| Backend | Completion | Verdict |
-|---------|-----------|---------|
-| mlx-fp16 | `0.3` | — |
-| mlx-q4 | `0.30000000000000004` | divergent |
-| llamacpp-q8 | `0.3` | — |
-| llamacpp-q4km | `0.3` | — |
-| torch-mps | `0.3` | — |
+| Backend | Completion (first 100 chars) |
+|---------|------------------------------|
+| mlx-fp16 | `- Quora\nWhat is 2^32?\nAd by The Penny Hoarder\nShould you leave more than $1,000 in a checking acc...` |
+| mlx-q4 | `- Quora\nWhat is 2^32?\nAd by The Penny Hoarder\nShould you leave more than $1,000 in a checking acc...` |
+| llamacpp-q8 | `- Quora\nWhat is 2^32?\nAd by Masterworks\nWhat's a good investment for 2022?\nThis might sound unc...` |
+| llamacpp-q4km | `- Quora\nWhat is 2^32?\nAd by Masterworks\nWhat's a good investment for 2022?\nThis might sound unc...` |
 
-**What changed:** The Q4-quantized MLX backend produces a floating-point-aware answer that references IEEE 754 representation, while all other backends produce the human-expected "0.3". This is a classic quantization-induced divergence: reduced precision in attention weights shifts the probability mass toward a more "literal" numeric response.
+**Verdict:** dispersed
 
-### Example 2: MMLU Answer Format
+**What changed:** All backends hallucinate a Quora-style web page rather than answering "4,294,967,296". The divergence is in the *content* of the hallucination: MLX backends hallucinate a "Penny Hoarder" ad, while llama.cpp backends hallucinate a "Masterworks" ad. This reveals that quantization framework (not just quantization level) influences which memorized training data surfaces. Both FP16 and Q4 within the same framework agree, but cross-framework comparison diverges — suggesting the divergence is driven by subtle differences in how MLX vs llama.cpp handle floating-point accumulation during attention computation.
 
-**Prompt:** `The longest bone in the human body is:\nA) Femur\nB) Tibia\nC) Humerus\nD) Fibula`
+### Example 2: Caesar Cipher Decoding Strategy (Canary)
 
-| Backend | Completion | Verdict |
-|---------|-----------|---------|
-| mlx-fp16 | `A` | — |
-| mlx-q4 | `A) Femur` | divergent |
-| llamacpp-q8 | `A` | — |
-| llamacpp-q4km | `The answer is A` | divergent |
-| torch-mps | `A` | — |
+**Prompt:** `The following is an encoded message using a simple Caesar cipher with shift 3: 'Wkh txlfn eurzq ira...'`
 
-**What changed:** All backends agree on the correct answer (A/Femur), but the extracted format differs. The output divergence detector's answer extraction logic normalizes these to "A" for verdict classification, but the raw completions diverge. In a production setting where downstream parsing expects a single letter, `llamacpp-q4km`'s response would require additional stripping.
+| Backend | Completion (first 100 chars) |
+|---------|------------------------------|
+| mlx-fp16 | `To decode the message, we need to reverse the Caesar cipher with a shift of 3. This means we will sh...` |
+| mlx-q4 | `To decode the message, we need to reverse the Caesar cipher with a shift of 3. This means we will sh...` |
+| llamacpp-q8 | `To decode the message, we need to reverse the Caesar cipher by shifting each letter 3 positions bac...` |
+| llamacpp-q4km | `To decode the message, we need to reverse the Caesar cipher with a shift of 3. This means we will s...` |
 
-### Example 3: GSM8K Multi-Step Reasoning
+**Verdict:** majority (3 backends agree, llamacpp-q8 diverges on phrasing)
 
-**Prompt:** `Janet's ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?`
+**What changed:** Three backends use "reverse the Caesar cipher with a shift of 3", while llamacpp-q8 phrases it as "shifting each letter 3 positions back". The answer is semantically identical but textually different. This illustrates how the output divergence detector correctly classifies this as "majority" — most backends agree, one deviates. In production, this kind of benign paraphrase divergence is noise, not signal.
 
-| Backend | Completion (truncated) | Final Answer |
-|---------|----------------------|--------------|
-| mlx-fp16 | `...16 - 3 - 4 = 9 eggs remaining. 9 × $2 = $18` | 18 |
-| mlx-q4 | `...16 - 3 = 13, 13 - 4 = 9. She sells 9 eggs at $2 each = $18` | 18 |
-| llamacpp-q8 | `...She uses 3 + 4 = 7 eggs. 16 - 7 = 9 left. 9 × 2 = 18` | 18 |
-| llamacpp-q4km | `...16 - 3 - 4 = 9 remaining eggs. Revenue: 9 × $2 = $18` | 18 |
-| torch-mps | `...Eggs remaining: 16 - 3 - 4 = 9. Daily revenue = 9 × $2 = $18` | 18 |
+### Example 3: MMLU Math Problem — Reasoning Chain (MMLU)
 
-**What changed:** All backends arrive at the correct answer ($18), but through different reasoning chains. The output divergence detector classifies this as "unanimous" because extracted answers match. However, the logprob divergence detector reveals token-level differences: `mlx-q4` has a mean KL of 0.032 against `mlx-fp16`, concentrated at chain-of-thought transition tokens where the model decides how to structure the next calculation step.
+**Prompt:** `Jane's quiz scores were 98, 97, 92, 85 and 93. What was her mean score? A. 92 B. 93 C. 94.5 D. 95`
+
+| Backend | Completion (first 90 chars) |
+|---------|------------------------------|
+| mlx-fp16 | `To find Jane's mean quiz score, we need to follow these steps:\n\n1. **Sum the sco...` |
+| mlx-q4 | `To find Jane's mean quiz score, we need to follow these steps:\n\n1. **Sum the sco...` |
+| llamacpp-q8 | `To find Jane's mean quiz score, we need to follow these steps:\n\n1. **Sum the sc...` |
+| llamacpp-q4km | `To find Jane's mean score, we need to follow these steps:\n\n1. **Sum the scores*...` |
+
+**Verdict:** majority
+
+**What changed:** llamacpp-q4km says "mean score" where the other three say "mean quiz score", and uses slightly different formatting in the step labels. All arrive at the correct answer (B. 93). The Q4_K_M quantization produces the most abbreviated phrasing — a pattern consistent with reduced precision causing the model to assign slightly different probabilities to filler words like "quiz".
 
 ## Discussion
 
@@ -98,23 +101,25 @@ MLX Q4 is fastest across the board. PyTorch MPS has the highest latency due to H
 
 Based on these findings, a production divergence monitoring system should alert on:
 
-1. **Canary disagreement rate > 5%** — the canary set is designed for deterministic answers. Any disagreement above noise indicates a meaningful behavioral shift.
-2. **Mean KL divergence > 0.05** — at this threshold, the backends are making measurably different next-token predictions. Below 0.05, differences are likely rounding noise from quantization.
-3. **Answer-level disagreement on factual recall (MMLU) > 2%** — these have unambiguous ground truth. Higher rates suggest a backend is producing lower-quality outputs.
+1. **Cross-framework disagreement on factual answers.** When MLX and llama.cpp backends give different extracted answers (not just different phrasing), this indicates a meaningful behavioral divergence that could affect users.
+2. **Hallucination divergence.** The "2^32" example shows that different backends hallucinate different content. If one backend starts hallucinating where others don't, that's a quality regression.
+3. **Canary disagreement on deterministic tasks.** For prompts with unambiguous correct answers (arithmetic, logic), any disagreement signals a problem.
 
 ### Proposed SLOs
 
 | Metric | Warning | Critical |
 |--------|---------|----------|
-| Canary disagreement rate | > 3% | > 8% |
-| MMLU answer disagreement | > 1% | > 3% |
-| Mean KL (logprob) | > 0.03 | > 0.08 |
-| Max KL (any token pair) | > 0.5 | > 1.0 |
+| MMLU answer disagreement (extracted) | > 15% | > 25% |
+| GSM8K answer disagreement (extracted) | > 20% | > 35% |
+| Canary unanimous rate | < 10% | < 5% |
+| Cross-framework agreement (same answer) | < 80% | < 70% |
+
+Note: these thresholds are calibrated to the observed rates. The high dispersed rates (30-92%) reflect textual divergence in long-form generation, not answer-level disagreement. SLOs should be set on *extracted answer* agreement, not raw text match.
 
 ### Eval Cadence
 
-- **Per-deploy**: run canary set (100 items, ~2 minutes). Gate deployment on canary SLO.
-- **Nightly**: full GSM8K + MMLU + canary suite. Generate trend dashboard.
+- **Per-deploy**: run canary set (100 items, ~50 minutes per backend). Gate deployment on canary answer-level agreement.
+- **Nightly**: full GSM8K + MMLU + canary suite. Generate trend dashboard. Flag any new items that shift from unanimous to dispersed.
 - **Weekly**: logprob-level analysis on full suite. Review top-50 divergent items for new patterns.
 
 ## Implications for AI Reliability Engineering
@@ -123,12 +128,14 @@ This project demonstrates that "the model works" and "the model works the same w
 
 Key takeaways:
 
-1. **Quantization is not a free lunch.** Q4 backends diverge measurably from FP16 baselines, particularly on arithmetic and format-sensitive prompts. The savings in memory and latency come at the cost of behavioral fidelity that must be actively monitored.
+1. **Framework matters more than quantization level.** The sharpest divergence boundary is between MLX and llama.cpp, not between FP16 and Q4. Within the same framework, different quantization levels produce near-identical outputs for most prompts. Across frameworks, even at the same precision (Q8 vs FP16), outputs diverge significantly. This suggests that implementation details in attention computation, KV-cache management, and sampling logic have more behavioral impact than weight precision.
 
-2. **Output-level agreement masks token-level divergence.** Two backends can produce the same final answer through different reasoning paths with different confidence profiles. Logprob-level analysis catches divergences that pure output comparison misses.
+2. **Long-form generation amplifies divergence.** With max_tokens=256 and greedy decoding, small per-token probability differences compound over the sequence. A token-level divergence at position 20 cascades into entirely different text by position 100. This is why the canary set (which allows long-form responses) shows 92% dispersed, while short-answer extraction from MMLU shows 60% unanimous.
 
-3. **Canary sets are the fastest path to signal.** A small, hand-crafted evaluation set targeting known precision-sensitive operations (arithmetic, formatting, logical chains) provides higher signal-to-noise than large generic benchmarks for detecting backend-specific regressions.
+3. **Canary sets need answer extraction.** Raw text comparison classifies most outputs as "dispersed" because generation is inherently sensitive to initial conditions. The meaningful signal is in extracted answers — does the model get the same final answer regardless of backend? This requires dataset-specific extraction logic (regex for math, letter matching for MMLU).
 
-4. **Continuous evaluation as a deployment gate.** The pattern of "evaluate before deploy, alert on divergence, block on threshold breach" maps directly onto existing CI/CD infrastructure. The eval harness is the test suite; the SLO is the pass/fail criterion; the canary set is the smoke test.
+4. **llama.cpp is fastest, MLX is most consistent.** llama.cpp Q4_K_M delivers 31% lower latency than MLX FP16, but the two llama.cpp backends show slightly more inter-backend divergence than the two MLX backends. The choice between frameworks is a speed-vs-consistency tradeoff.
+
+5. **MPS FP16 is not viable for 7B models on 24 GB.** The buffer allocation failure means PyTorch MPS cannot be used as a serving backend for this model size without either reducing precision further or using a machine with more memory. This eliminates one potential backend from the heterogeneous serving pool.
 
 The gap between "model works" and "model works the same way across all serving infrastructure" is where silent quality regressions live. Closing that gap requires treating behavioral consistency as a first-class reliability metric, measured continuously and enforced automatically.
