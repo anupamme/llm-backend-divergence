@@ -62,11 +62,12 @@ class TorchMpsBackend(Backend):
             )
 
         self._tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self._model = AutoModelForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             model_id,
             torch_dtype=torch.float16,
-            device_map="mps",
+            device_map=None,
         )
+        self._model = model.to("mps")  # type: ignore[arg-type]
         self._model_id = model_id
 
     def generate(
