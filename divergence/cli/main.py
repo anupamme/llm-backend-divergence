@@ -197,6 +197,7 @@ def run(
                 resume=resume,
                 dataset_name=dataset_name,
                 apply_chat_template=not no_chat_template,
+                model_id=model_id,
             )
 
             console.print(

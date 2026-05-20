@@ -44,6 +44,7 @@ class RunConfig(BaseModel):
     score_completion: Literal["model", "reference"] = "model"
     dataset_name: str = "unknown"
     apply_chat_template: bool = True
+    model_id: str = ""
 
 
 class RunSummary(BaseModel):
@@ -111,14 +112,12 @@ def run_eval(
 
     start_wall = time.perf_counter()
 
-    model_id = backend.metadata.name or ""
-
     for item in tqdm(items_to_run, desc=f"Running {backend.name}"):
         result: InferenceResult | None = None
         error_msg: str | None = None
 
         effective_prompt = format_prompt(
-            item.prompt, model_id, apply_template=config.apply_chat_template
+            item.prompt, config.model_id, apply_template=config.apply_chat_template
         )
 
         try:
