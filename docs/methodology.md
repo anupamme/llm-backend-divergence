@@ -1,6 +1,43 @@
 # Measurement Methodology
 
-This document describes the measurement decisions behind the divergence evaluation framework: how seeds are managed for reproducibility, how latency is measured, why pairwise KL divergence was chosen for logprob analysis, and how tokenizer mismatches are handled.
+This document describes the measurement decisions behind the divergence evaluation framework: how chat templates are applied, how seeds are managed for reproducibility, how latency is measured, why pairwise KL divergence was chosen for logprob analysis, and how tokenizer mismatches are handled.
+
+## Chat Template Formatting
+
+### Why It Matters
+
+Instruct-tuned models (like Qwen2.5-7B-Instruct) are trained to expect structured input with role markers — `<|im_start|>user`, `<|im_end|>`, `<|im_start|>assistant`. Without these markers, the model treats raw text as a base-model continuation prompt and generates based on memorized training data patterns rather than following instructions.
+
+### Implementation
+
+The pipeline applies the model's chat template via `divergence/prompt_format.py`:
+
+```python
+from transformers import AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+messages = [{"role": "user", "content": raw_prompt}]
+formatted = tokenizer.apply_chat_template(
+    messages, tokenize=False, add_generation_prompt=True
+)
+```
+
+For Qwen2.5-Instruct, this produces:
+```
+<|im_start|>system
+You are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>
+<|im_start|>user
+{raw_prompt}<|im_end|>
+<|im_start|>assistant
+```
+
+### Design Decisions
+
+1. **Applied in the runner, not per-backend.** Template formatting is centralized in `run_eval()` before calling `backend.generate()`. This ensures all backends receive byte-identical input strings, preserving the key experimental invariant.
+
+2. **`--no-chat-template` flag for backward compatibility.** The CLI accepts `--no-chat-template` to reproduce the initial (template-free) run for comparison purposes.
+
+3. **Graceful fallback.** If the tokenizer cannot be loaded (e.g., mock backends in tests), the raw prompt is passed through unchanged.
 
 ## Seed Management
 

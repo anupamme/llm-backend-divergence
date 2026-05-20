@@ -46,7 +46,8 @@ class TestFindings:
 
     def test_has_headline_numbers(self) -> None:
         content = (ROOT / "docs" / "findings.md").read_text()
-        assert "## Headline Numbers" in content
+        assert "## Structured Divergence Analysis" in content
+        assert "## Latency Breakdown" in content
 
     def test_has_divergence_examples(self) -> None:
         content = (ROOT / "docs" / "findings.md").read_text()

@@ -117,6 +117,10 @@ def run(
     seed: int = typer.Option(42, help="Random seed."),
     model_id: str = typer.Option("Qwen/Qwen2.5-7B-Instruct", help="Model ID to load."),
     resume: bool = typer.Option(False, help="Resume incomplete runs."),
+    no_chat_template: bool = typer.Option(
+        False,
+        help="Skip chat template formatting (pass raw prompts to backends).",
+    ),
 ) -> None:
     """Run backends across datasets and persist results to SQLite."""
     output_path = output or _default_output_path()
@@ -192,6 +196,7 @@ def run(
                 output_db_path=output_path,
                 resume=resume,
                 dataset_name=dataset_name,
+                apply_chat_template=not no_chat_template,
             )
 
             console.print(

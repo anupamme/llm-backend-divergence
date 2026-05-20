@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from divergence.backends.base import Backend
 from divergence.backends.schema import InferenceResult
 from divergence.evals.datasets import EvalItem
+from divergence.prompt_format import format_prompt
 from divergence.runner.db import (
     get_completed_item_ids,
     init_db,
@@ -42,6 +43,7 @@ class RunConfig(BaseModel):
     resume: bool = False
     score_completion: Literal["model", "reference"] = "model"
     dataset_name: str = "unknown"
+    apply_chat_template: bool = True
 
 
 class RunSummary(BaseModel):
@@ -109,13 +111,19 @@ def run_eval(
 
     start_wall = time.perf_counter()
 
+    model_id = backend.metadata.name or ""
+
     for item in tqdm(items_to_run, desc=f"Running {backend.name}"):
         result: InferenceResult | None = None
         error_msg: str | None = None
 
+        effective_prompt = format_prompt(
+            item.prompt, model_id, apply_template=config.apply_chat_template
+        )
+
         try:
             result = backend.generate(
-                item.prompt,
+                effective_prompt,
                 max_tokens=config.max_tokens,
                 temperature=config.temperature,
                 seed=config.seed,
@@ -137,7 +145,7 @@ def run_eval(
                     score_text = result.completion
                 else:
                     score_text = item.reference_answer
-                score_result = backend.score(item.prompt, score_text)
+                score_result = backend.score(effective_prompt, score_text)
                 insert_scoring_result(conn, config.run_id, item.id, score_result, None)
         except NotImplementedError:
             pass
