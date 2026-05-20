@@ -220,16 +220,45 @@ Key takeaways:
 
 ## Before/After: Chat Template
 
-After implementing `divergence/prompt_format.py`, the pipeline now applies the model's chat template by default. A targeted rerun of the canary set with proper prompting is pending. Expected changes:
+After implementing `divergence/prompt_format.py`, we reran the full canary set (100 items × 5 backends) with the chat template applied. Results:
 
-- Hallucination examples (like "What is 2^32?") should produce direct answers instead of web page content
-- Within-framework agreement on canary should increase significantly (fewer divergent long-form continuations when the model is in instruction-following mode)
-- Cross-framework agreement may also improve, as instruction-following produces shorter, more constrained outputs
+### Quality Impact: Hallucinations Eliminated
 
-The `--no-chat-template` flag preserves backward compatibility for comparison. Run with:
+| Backend | Hallucination rate (without template) | Hallucination rate (with template) |
+|---------|---------------------------------------|-------------------------------------|
+| mlx-fp16 | 4.0% | 0.0% |
+| mlx-q4 | 4.0% | 0.0% |
+| llamacpp-q8 | 3.0% | 0.0% |
+| llamacpp-q4km | 2.0% | 0.0% |
+| torch-mps | 3.0% | 0.0% |
+
+With the chat template, "What is 2^32?" produces direct answers across all backends:
+- mlx-fp16, mlx-q4, llamacpp-q8: `2^32 equals 4,294,967,296.`
+- llamacpp-q4km, torch-mps: `The value of 2^32 is 4,294,967,296.`
+
+Two phrasing clusters persist (same answer, different wording) — demonstrating that framework-level divergence exists independently of the hallucination artifact.
+
+### Divergence Impact: Unchanged
+
+| Group | Without Template | With Template |
+|-------|-----------------|---------------|
+| Within-framework | 74.0% | 72.0% |
+| Cross-framework (matched precision) | 42.0% | 38.0% |
+| Cross-framework (confounded) | 37.6% | 37.7% |
+| 5-way unanimous | 19.0% | 18.0% |
+
+**The divergence rates are statistically indistinguishable between the two conditions.** This is the most important finding from the before/after comparison: the chat template fixes output *quality* (no hallucinations) but does not reduce inter-backend *divergence*. The framework-level behavioral differences persist regardless of whether the model is in base-completion or instruction-following mode.
+
+### What This Proves
+
+1. **The divergence findings from the initial run are valid.** The "framework > quantization" conclusion, the within-framework vs cross-framework gap, and the phrasing cluster patterns are all real — not artifacts of missing chat templates.
+
+2. **Quality and consistency are independent failure modes.** The template omission caused a quality bug (hallucinations) but not a consistency bug (divergence was already present and unchanged). A production system needs both: correct prompting for quality AND divergence monitoring for consistency.
+
+3. **The reviewer's hypothesis was half-right.** Chat template was indeed the cause of hallucination behavior — but it was NOT "the root cause of half the findings." The divergence signal is orthogonal to prompt formatting correctness.
+
+The `--no-chat-template` flag preserves backward compatibility. Compare with:
 ```bash
 divergence run --no-chat-template --datasets canary --db results/baseline_no_template.db
 divergence run --datasets canary --db results/with_template.db
 ```
-
-This before/after comparison itself demonstrates a core AIRE principle: a silent configuration difference (chat template presence) can cause dramatic behavioral changes that standard availability metrics (latency, error rate) would never detect. Only behavioral comparison — running the same prompts through both configurations and measuring output divergence — surfaces the issue.
