@@ -131,7 +131,19 @@ class TestExtractAnswer:
         text = "The answer is B because..."
         assert _extract_answer(text, "mmlu") == "B"
 
-    def test_general_category(self) -> None:
+    def test_canary_arithmetic_extracts_number(self) -> None:
+        text = "The answer is 579."
+        assert _extract_answer(text, "canary", "canary-arith-001") == "579"
+
+    def test_canary_arithmetic_negative(self) -> None:
+        text = "That equals -42 exactly."
+        assert _extract_answer(text, "canary", "canary-arith-010") == "-42"
+
+    def test_canary_non_arithmetic_uses_prefix(self) -> None:
+        text = "  Hello world  "
+        assert _extract_answer(text, "canary", "canary-logic-001") == "Hello world"
+
+    def test_canary_no_item_id_uses_prefix(self) -> None:
         text = "  Hello world  "
         assert _extract_answer(text, "canary") == "Hello world"
 

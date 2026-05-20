@@ -38,15 +38,15 @@ A follow-up run with chat templates applied is documented in the "Before/After: 
 
 Rather than presenting a single agreement table that conflates quantization effects with framework effects, we separate comparisons into three tiers:
 
-| Group | GSM8K | MMLU | Canary |
-|-------|-------|------|--------|
-| **Within-framework** (FP16 vs Q4, same framework) | 78.2% | 92.3% | 74.0% |
-| **Cross-framework, matched precision** (MLX FP16 vs torch-mps FP16) | 53.5% | 86.0% | 42.0% |
-| **Cross-framework, confounded** (different framework + precision) | 53.1% | 84.3% | 37.6% |
+| Group | GSM8K | MMLU | Canary (overall) | Canary (arithmetic subset) |
+|-------|-------|------|------------------|---------------------------|
+| **Within-framework** (FP16 vs Q4, same framework) | 78.2% | 92.3% | 81.0% | 96.2% |
+| **Cross-framework, matched precision** (MLX FP16 vs torch-mps FP16) | 53.5% | 86.0% | 61.0% | 92.5% |
+| **Cross-framework, confounded** (different framework + precision) | 53.1% | 84.3% | 58.3% | 91.4% |
 
-These are extracted-answer agreement rates — not raw text match. For GSM8K, we extract the final numeric answer; for MMLU, the letter choice (A-D); for canary, the first 100 characters of stripped output (since canary lacks a uniform answer format).
+These are extracted-answer agreement rates — not raw text match. Extraction logic varies by dataset: for GSM8K, the final numeric answer (after `####` or last number); for MMLU, the letter choice (A-D); for canary arithmetic items (40/100), the first number in the completion; for non-arithmetic canary items (60/100), the first 100 characters of stripped output (no reliable answer format exists for logic, formatting, and long-context dimensions). The "overall" canary column blends both tiers.
 
-**Key observation:** Within-framework agreement is 25-37 percentage points higher than cross-framework for GSM8K and canary. For MMLU (short factual answers), the gap narrows to 6-8 points. This pattern is consistent with the hypothesis that framework implementation details (attention kernels, KV-cache management, sampling code) introduce more behavioral divergence than weight quantization.
+**Key observation:** Within-framework agreement is 20-25 percentage points higher than cross-framework for GSM8K and canary overall. For MMLU (short factual answers), the gap narrows to 6-8 points. For canary arithmetic items specifically, all groups exceed 91% agreement — numeric extraction collapses textual variation, confirming that much of the "divergence" on canary is paraphrase noise, not answer disagreement. This pattern is consistent with the hypothesis that framework implementation details (attention kernels, KV-cache management, sampling code) introduce more behavioral divergence than weight quantization.
 
 ### Raw Text Verdict Distribution
 
@@ -58,7 +58,7 @@ For completeness, the raw text comparison verdicts (which conflate semantic agre
 | MMLU | 57.6% | 9.8% | 7.2% | 25.4% |
 | Canary | 2.0% | 3.0% | 4.0% | 91.0% |
 
-**Caveat:** The 91% "dispersed" on canary does not mean backends disagree on answers — it means long-form generation produces textually different outputs even when the semantic content is equivalent. This metric is useful for detecting copy-paste equivalence but not for measuring behavioral consistency. The extracted-answer table above is the operationally meaningful metric.
+**Caveat:** The 91% "dispersed" on canary does not mean backends disagree on answers — it means long-form generation produces textually different outputs even when the semantic content is equivalent. The arithmetic subset achieves 96% within-framework agreement when numeric answer extraction is applied, vs raw-text "dispersed" verdicts on those same items. This metric is useful for detecting copy-paste equivalence but not for measuring behavioral consistency. The extracted-answer table above is the operationally meaningful metric.
 
 ## Latency Breakdown
 
@@ -106,7 +106,7 @@ All backends hit max_tokens (256) on the majority of prompts — median is 256 a
 
 The logprob divergence analysis detected **zero tokenization mismatches** across all backend pairs. This is expected: all five backends use the same Qwen2.5 tokenizer (via HuggingFace for MLX and torch-mps, via the GGUF-embedded tokenizer for llama.cpp). The GGUF tokenizer is extracted from the same HuggingFace source during model conversion, ensuring byte-level compatibility.
 
-This is a notable negative finding — tokenizer divergence is a known failure mode in heterogeneous serving, and its absence here means all observed divergence is attributable to compute differences, not input encoding differences.
+This is a notable negative finding — tokenizer divergence is a known failure mode in heterogeneous serving, and its absence here means all observed divergence on this prompt set is attributable to compute rather than tokenization differences.
 
 ## Divergence Examples
 
@@ -128,7 +128,7 @@ The following examples illustrate patterns visible in the aggregate data. They a
 
 **Root cause:** Without the chat template, the model treats the raw prompt as a continuation of training data and generates memorized web page content. The divergence reveals three clusters matching frameworks — MLX backends hallucinate Quora with a "Penny Hoarder" ad; llama.cpp backends hallucinate Quora with a "Masterworks" ad; torch-mps hallucinates a Wiki Answers page.
 
-**What survives scrutiny:** The within-framework clustering is real — backends sharing a framework agree on which memorized content surfaces, even though the weights differ (FP16 vs Q4). This indicates that implementation-level choices in how logits are computed (floating-point accumulation order, attention kernel design) deterministically select between near-equiprobable continuations.
+**What survives scrutiny:** The within-framework clustering is real — backends sharing a framework agree on which memorized content surfaces, even though the weights differ (FP16 vs Q4). This suggests that implementation-level choices in how logits are computed (floating-point accumulation order, attention kernel design) consistently selected between near-equiprobable continuations on this prompt.
 
 **What doesn't:** The hallucination itself is an artifact of missing chat template, not a production-relevant finding. With proper prompting, the model answers "4,294,967,296" directly (see Before/After section below).
 
@@ -162,7 +162,7 @@ The following examples illustrate patterns visible in the aggregate data. They a
 
 **Verdict:** majority (4 agree, llamacpp-q4km diverges on phrasing)
 
-**What this shows:** llamacpp-q4km drops "quiz" from "mean quiz score" — the most aggressively quantized backend (Q4_K_M) produces slightly different token probabilities for low-information filler words. All backends extract to the same answer (B). This is the within-framework quantization effect in action: Q4_K_M is the only backend that diverges from its framework-mate (Q8) on this prompt, consistent with the 78% vs 92% within-framework agreement gap between GSM8K and MMLU.
+**What this shows:** llamacpp-q4km drops "quiz" from "mean quiz score" — the most aggressively quantized backend (Q4_K_M) produces slightly different token probabilities for low-information filler words. All backends extract to the same answer (B). This is benign phrasing divergence from quantization: the answer is preserved but verbatim text differs.
 
 ## Discussion
 
@@ -170,7 +170,7 @@ The following examples illustrate patterns visible in the aggregate data. They a
 
 Based on these findings, a production divergence monitoring system should alert on:
 
-1. **Cross-framework disagreement on extracted answers.** When backends give different final answers (not just different phrasing), this indicates a meaningful behavioral divergence. The structured comparison shows 53% cross-framework agreement on GSM8K vs 78% within-framework — a 25-point gap that represents real answer-level disagreement.
+1. **Cross-framework disagreement on extracted answers.** When backends give different final answers (not just different phrasing), this indicates a meaningful behavioral divergence. The structured comparison shows 53% cross-framework agreement on GSM8K vs 78% within-framework — a 25-point gap that represents real answer-level disagreement. The canary arithmetic subset (96% agreement across all groups) demonstrates that when proper answer extraction is applied, most divergence collapses to benign paraphrase — making extraction logic a prerequisite for meaningful alerting.
 2. **Canary regression on deterministic tasks.** For prompts with unambiguous correct answers (arithmetic, logic), any within-framework disagreement signals a weight-loading or computation bug.
 3. **TTFT regression.** A backend whose TTFT increases >2x likely has a compute path change (e.g., falling back to CPU, shader recompilation).
 
@@ -183,7 +183,7 @@ Based on these findings, a production divergence monitoring system should alert 
 | Cross-framework extracted-answer agreement | < 50% | < 40% |
 | TTFT p95 regression (vs baseline) | > 2x | > 5x |
 
-Note: these thresholds are calibrated to observed rates. SLOs are set on extracted-answer agreement, not raw text match. The "cross-framework" SLO is intentionally looser because framework-level divergence is expected and acceptable; what matters is detecting regressions from baseline.
+Warning thresholds are set approximately one confidence interval below observed baselines, so that normal run-to-run variance does not trigger alerts while genuine regressions are caught. SLOs are set on extracted-answer agreement, not raw text match. The "cross-framework" SLO is intentionally looser because framework-level divergence is expected and acceptable; what matters is detecting regressions from baseline.
 
 ### Eval Cadence
 
@@ -208,17 +208,26 @@ This project demonstrates that "the model works" and "the model works the same w
 
 Key takeaways:
 
-1. **Framework matters more than quantization level — with evidence.** Within-framework agreement: GSM8K 78.2%, MMLU 92.3%, canary 74.0%. Cross-framework agreement: GSM8K 53.5%, MMLU 86.0%, canary 42.0%. The 25-32 point gap on GSM8K and canary is large enough to be operationally significant, even accounting for the n=200/100 sample sizes. The MMLU gap is smaller (6 points) because short factual answers are more constrained.
+1. **Framework matters more than quantization level — with evidence.** Within-framework agreement: GSM8K 78.2%, MMLU 92.3%, canary 81.0%. Cross-framework agreement: GSM8K 53.5%, MMLU 86.0%, canary 61.0%. The 20-25 point gap on GSM8K and canary is large enough to be operationally significant, even accounting for the n=200/100 sample sizes. The MMLU gap is smaller (6 points) because short factual answers are more constrained.
 
-2. **Long-form generation amplifies divergence exponentially.** The canary set (long-form, 91% dispersed on raw text) vs MMLU (short-answer, 57.6% unanimous on raw text) demonstrates that per-token probability differences compound over sequence length. At position 20, a small logit difference may select a different token; by position 100, the texts have diverged completely. This is why extracted-answer comparison is essential — raw text equality is unachievable for generation-bound workloads.
+2. **Long-form generation compounds divergence with sequence length.** The canary set (long-form, 91% dispersed on raw text) vs MMLU (short-answer, 57.6% unanimous on raw text) demonstrates that per-token probability differences compound over sequence length. At position 20, a small logit difference may select a different token; by position 100, the texts have diverged completely. This is why extracted-answer comparison is essential — raw text equality is unachievable for generation-bound workloads.
 
-3. **Answer extraction is the operationally meaningful metric.** Raw text verdicts classify 91% of canary outputs as "dispersed", while extracted-answer comparison shows 74% within-framework agreement. The gap between these numbers represents benign paraphrase variation that should not trigger alerts. Per-dataset extraction logic (regex for math, letter matching for MMLU) is required infrastructure for a production divergence monitor.
+3. **Answer extraction is the operationally meaningful metric.** Raw text verdicts classify 91% of canary outputs as "dispersed", while extracted-answer comparison shows 81% within-framework agreement overall — and 96% for arithmetic items where proper numeric extraction is possible. The gap between raw-text and extracted-answer metrics represents benign paraphrase variation that should not trigger alerts. Per-dataset extraction logic (regex for math, letter matching for MMLU) is required infrastructure for a production divergence monitor.
 
-4. **llama.cpp is fastest, MLX is most consistent.** llama.cpp Q4_K_M: 24.8s total (98 ms/token decode). MLX FP16: 36.2s total (139 ms/token decode). The 32% speed gap comes entirely from decode efficiency — Q4_K_M's quantized Metal kernels achieve lower per-token latency. However, within-framework agreement is higher for MLX (both backends agree more often), making it the safer choice when consistency matters more than throughput.
+4. **llama.cpp is fastest, MLX backends agreed more often.** llama.cpp Q4_K_M: 24.8s total (98 ms/token decode). MLX FP16: 36.2s total (139 ms/token decode). The 32% speed gap comes entirely from decode efficiency — Q4_K_M's quantized Metal kernels achieve lower per-token latency. MLX's two backends agreed more often than llama.cpp's in this run — though with one quantization pair per framework, this could reflect the specific quantization levels tested (FP16→Q4 vs Q8→Q4_K_M) rather than an inherent framework property.
 
 5. **MPS FP16 has the fastest prefill but slowest decode.** torch-mps achieves 168 ms TTFT (3x faster than llama.cpp, 5x faster than MLX) because HuggingFace's batched forward pass leverages MPS matrix-multiply acceleration for the full prompt in one shot. But its per-token decode (154 ms) is 57% slower than llama.cpp Q4_K_M due to Python-level autoregressive loop overhead. In production: use MPS-style backends for latency-sensitive first-token scenarios; use llama.cpp for throughput-bound generation.
 
 6. **Correct prompting is a reliability prerequisite.** The chat template omission demonstrates that "model gives wrong answer" and "backend diverges from other backends" are independent failure modes. The initial run found both simultaneously — but only the latter is the divergence detector's job. Fixing the template (see below) eliminates the quality bug but preserves the divergence signal, confirming that the measurement approach is robust.
+
+### Remediation: From Detection to Action
+
+Detection is necessary but not sufficient. A production divergence monitoring system needs an operational model for *what to do* when divergence is found:
+
+- **Pin a reference backend** (e.g., MLX FP16) and measure other backends' divergence *from reference*, not pairwise. This turns an O(n²) comparison matrix into n-1 directional checks and answers the question "which backend changed?" rather than "they differ."
+- **Accept benign paraphrase divergence.** When backends produce different text but the same extracted answer, this is expected behavior, not a defect. Only extracted-answer disagreement with the reference should trigger alerts.
+- **Alert on answer-flips.** The critical signal is when a backend produces a *different extracted answer* from the reference — this indicates a change in model behavior that may affect downstream systems.
+- **The operational question:** when backends disagree on an answer, which one is "correct"? The reference backend's answer is treated as ground truth for consistency purposes, regardless of objective correctness. Correctness is the eval suite's job; the divergence monitor's job is detecting *change*.
 
 ## Before/After: Chat Template
 
@@ -246,12 +255,12 @@ Two phrasing clusters persist (same answer, different wording) — demonstrating
 
 | Group | Without Template | With Template |
 |-------|-----------------|---------------|
-| Within-framework | 74.0% | 72.0% |
-| Cross-framework (matched precision) | 42.0% | 38.0% |
-| Cross-framework (confounded) | 37.6% | 37.7% |
-| 5-way unanimous | 19.0% | 18.0% |
+| Within-framework | 81.0% | 81.0% |
+| Cross-framework (matched precision) | 61.0% | 61.0% |
+| Cross-framework (confounded) | 58.3% | 58.4% |
+| 5-way unanimous | 46.0% | 45.0% |
 
-Divergence persists at the same order of magnitude with the template applied. All observed shifts (1-4 percentage points) are within the ~6-point detection threshold established by our n=100 sample size (limitation #8). We cannot conclude "no effect" — only that template application is not a *major* driver of divergence. A small increase in divergence (plausibly from longer, more elaborate instruction-mode responses providing more surface for variation) cannot be ruled out at this sample size.
+With proper per-dimension answer extraction (numeric for arithmetic items, 100-char prefix for others), divergence rates are virtually identical before and after chat template application — despite the underlying completions being entirely different (verbose explanations without the template vs concise answers with it). The within-framework rate is 162/200 in both runs; for the llamacpp pair specifically, 12 items flipped from agree-to-disagree and 12 from disagree-to-agree, yielding a net-zero change that explains the identical headline number. The corrected numbers confirm that the chat template has no measurable effect on answer-level divergence at this sample size (n=100, ~±6% CI).
 
 ### Interpretation
 

@@ -76,7 +76,7 @@ def compute_structured_comparison(
         if key in seen:
             continue
         seen.add(key)
-        items[item_id][backend] = _extract_answer(completion, dataset_name)
+        items[item_id][backend] = _extract_answer(completion, dataset_name, item_id)
 
     def _agreement(pairs: list[tuple[str, str]]) -> tuple[int, int]:
         agree = 0

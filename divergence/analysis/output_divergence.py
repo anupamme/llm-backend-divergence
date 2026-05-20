@@ -63,7 +63,7 @@ def _levenshtein(s1: str, s2: str) -> int:
     return prev_row[-1]
 
 
-def _extract_answer(completion: str, category: str) -> str:
+def _extract_answer(completion: str, category: str, item_id: str = "") -> str:
     """Extract the final answer from a completion based on dataset category."""
     if category == "gsm8k" or category == "arithmetic":
         match = re.search(r"####\s*(-?[\d,]+(?:\.\d+)?)", completion)
@@ -80,7 +80,13 @@ def _extract_answer(completion: str, category: str) -> str:
             return match.group(1)
         return completion.strip()
 
-    return completion.strip()
+    if category == "canary" and item_id.startswith("canary-arith-"):
+        numbers = re.findall(r"-?[\d,]+(?:\.\d+)?", completion)
+        if numbers:
+            return str(numbers[0]).replace(",", "")
+        return completion.strip()[:100]
+
+    return completion.strip()[:100]
 
 
 def _classify_verdict(answers: dict[str, str]) -> Verdict:
@@ -235,7 +241,7 @@ def compute_output_divergence(db_path: str, dataset_name: str) -> DivergenceRepo
     for item_id, comps in completions_by_item.items():
         extracted: dict[str, str] = {}
         for backend, completion in comps.items():
-            extracted[backend] = _extract_answer(completion, category)
+            extracted[backend] = _extract_answer(completion, category, item_id)
 
         verdict = _classify_verdict(extracted)
         prompt_verdicts.append(
