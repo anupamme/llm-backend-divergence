@@ -80,6 +80,8 @@ torch-mps shows 3-5x faster TTFT (168 ms) than other backends. This warrants exp
 - **llama.cpp processes the prompt through its quantized kernel pipeline** with additional overhead from GGUF format decoding and Metal shader compilation on first use. The 475-495 ms TTFT includes both prompt evaluation and KV-cache allocation.
 - **MLX's `stream_generate()` has a higher-overhead prompt evaluation** path, processing the prompt in chunks through its lazy-evaluation graph before beginning token emission.
 
+An unresolved confound: each backend's timing hook fires at a slightly different point in its generation loop (HuggingFace `StoppingCriteria` callback vs. MLX `stream_generate` yield vs. llama.cpp streaming chunk). While all nominally measure time-to-first-token, we have not verified that these boundaries correspond to the same logical event across frameworks. The 3-5x gap may partially reflect measurement-boundary differences rather than pure compute differences.
+
 The TTFT advantage does not translate to end-to-end speed: torch-mps has the highest per-token decode latency (154 ms vs 98-139 ms for others) due to Python-level overhead in HuggingFace's autoregressive loop vs native C++/Metal decode loops in llama.cpp and MLX.
 
 ### MLX FP16 vs Q4 Latency Parity
@@ -98,7 +100,7 @@ MLX FP16 and Q4 show near-identical decode-per-token latency (139.0 vs 138.8 ms)
 | mlx-fp16 | 237.9 | 256 | 7 | 256 |
 | mlx-q4 | 238.6 | 256 | 7 | 256 |
 
-All backends hit max_tokens (256) on the majority of prompts — median is 256 across the board. This confirms that most outputs are length-truncated rather than naturally terminated. The small differences in mean (231-239) reflect different rates of early stopping (EOS token emission before 256 tokens). MLX backends emit EOS slightly less often (higher mean), consistent with minor probability distribution differences at the quantization boundary.
+All backends hit max_tokens (256) on the majority of prompts — median is 256 across the board. This confirms that most outputs are length-truncated rather than naturally terminated. The small differences in mean (231-239) reflect different rates of early stopping (EOS token emission before 256 tokens). MLX backends show slightly higher mean token counts (238 vs 231), though whether this reflects a real difference in EOS emission probability or sampling noise is unclear without per-prompt variance analysis.
 
 ### Tokenizer Alignment
 
@@ -232,6 +234,8 @@ After implementing `divergence/prompt_format.py`, we reran the full canary set (
 | llamacpp-q4km | 2.0% | 0.0% |
 | torch-mps | 3.0% | 0.0% |
 
+With 2-4 events per backend, the per-backend rates are not distinguishable from each other; the finding is that hallucination is present without the template and absent with it, not that any particular backend hallucinates more than another.
+
 With the chat template, "What is 2^32?" produces direct answers across all backends:
 - mlx-fp16, mlx-q4, llamacpp-q8: `2^32 equals 4,294,967,296.`
 - llamacpp-q4km, torch-mps: `The value of 2^32 is 4,294,967,296.`
@@ -247,15 +251,13 @@ Two phrasing clusters persist (same answer, different wording) — demonstrating
 | Cross-framework (confounded) | 37.6% | 37.7% |
 | 5-way unanimous | 19.0% | 18.0% |
 
-**The divergence rates are statistically indistinguishable between the two conditions.** This is the most important finding from the before/after comparison: the chat template fixes output *quality* (no hallucinations) but does not reduce inter-backend *divergence*. The framework-level behavioral differences persist regardless of whether the model is in base-completion or instruction-following mode.
+Divergence persists at the same order of magnitude with the template applied. All observed shifts (1-4 percentage points) are within the ~6-point detection threshold established by our n=100 sample size (limitation #8). We cannot conclude "no effect" — only that template application is not a *major* driver of divergence. A small increase in divergence (plausibly from longer, more elaborate instruction-mode responses providing more surface for variation) cannot be ruled out at this sample size.
 
-### What This Proves
+### Interpretation
 
-1. **The divergence findings from the initial run are valid.** The "framework > quantization" conclusion, the within-framework vs cross-framework gap, and the phrasing cluster patterns are all real — not artifacts of missing chat templates.
+1. **Template application is not the primary source of divergence.** The within-framework vs cross-framework gap persists at similar magnitude, and the phrasing-cluster patterns (e.g., two groups on "What is 2^32?") continue to align with framework boundaries. The structural findings from the initial run appear robust, though a larger-n rerun would be needed to fully confirm this.
 
-2. **Quality and consistency are independent failure modes.** The template omission caused a quality bug (hallucinations) but not a consistency bug (divergence was already present and unchanged). A production system needs both: correct prompting for quality AND divergence monitoring for consistency.
-
-3. **The reviewer's hypothesis was half-right.** Chat template was indeed the cause of hallucination behavior — but it was NOT "the root cause of half the findings." The divergence signal is orthogonal to prompt formatting correctness.
+2. **Quality and consistency are independent failure modes.** The template omission caused a quality bug (hallucinations) that is fully corrected by proper prompting. But the divergence signal — different backends producing different phrasings for the same semantic content — exists regardless of prompt formatting. A production system needs both: correct prompting for quality AND divergence monitoring for consistency.
 
 The `--no-chat-template` flag preserves backward compatibility. Compare with:
 ```bash
